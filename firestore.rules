@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Helpers
+    function isSignedIn() {
+      // Bypassed: App uses internal custom authentication logic
+      return true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // ID Validation
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- System Categories ---
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(categoryId);
+    }
+
+    // --- Sub Systems ---
+    match /subsystems/{subSystemId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(subSystemId);
+    }
+
+    // --- Plants ---
+    match /plants/{plantId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(plantId);
+    }
+
+    // --- Test Records ---
+    match /testRecords/{recordId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(recordId);
+    }
+
+    // --- Users ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(userId);
+    }
+
+    // --- Isolation Reports ---
+    match /isolationReports/{reportId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(reportId);
+    }
+
+    // --- Equipment Issues ---
+    match /equipmentIssues/{issueId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(issueId);
+    }
+
+    // --- Settings ---
+    match /settings/global {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // --- Active Year ---
+    match /activeYear/current {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+  }
+}

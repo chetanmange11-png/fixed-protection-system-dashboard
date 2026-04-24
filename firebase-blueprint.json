@@ -1,0 +1,136 @@
+{
+  "entities": {
+    "SystemCategory": {
+      "title": "System Category",
+      "description": "Top-level categorization of protection systems.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "SubSystem": {
+      "title": "Sub System",
+      "description": "Folders within categories representing specific protection types.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "categoryId": { "type": "string" }
+      },
+      "required": ["id", "name", "categoryId"]
+    },
+    "Plant": {
+      "title": "Plant",
+      "description": "Specific plant units or facilities within a sub-system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "subSystemId": { "type": "string" },
+        "unitType": { "type": "string" }
+      },
+      "required": ["id", "name", "code", "subSystemId"]
+    },
+    "TestRecord": {
+      "title": "Test Record",
+      "description": "Audit record of a health check on a specific plant tag.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plantId": { "type": "string" },
+        "plantName": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "categoryName": { "type": "string" },
+        "subSystemId": { "type": "string" },
+        "subSystemName": { "type": "string" },
+        "tagNumber": { "type": "string" },
+        "location": { "type": "string" },
+        "cycle": { "type": "string" },
+        "scheduleMonth": { "type": "string" },
+        "dateOfTesting": { "type": "string" },
+        "status": { "type": "string" },
+        "healthCondition": { "type": "string" },
+        "deficiency": { "type": "string" },
+        "actionTaken": { "type": "string" },
+        "testedBy": { "type": "string" },
+        "plantPersonnel": { "type": "string" },
+        "attachmentUrl": { "type": "string" },
+        "financialYear": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "plantId", "tagNumber", "financialYear"]
+    },
+    "AppUser": {
+      "title": "App User",
+      "description": "Application users with specific roles.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "password": { "type": "string" }
+      },
+      "required": ["id", "name", "role"]
+    },
+    "IsolationReport": {
+      "title": "Isolation Report",
+      "description": "Safety record for plant isolations.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "dateOfIsolation": { "type": "string" },
+        "plantId": { "type": "string" },
+        "plantName": { "type": "string" },
+        "plannedUnplanned": { "type": "string" },
+        "fireWaterIsolationType": { "type": "string" },
+        "affectedPlant": { "type": "string" },
+        "affectedArea": { "type": "string" },
+        "detailsOfJob": { "type": "string" },
+        "approvalFileUrl": { "type": "string" },
+        "checklistFileUrl": { "type": "string" },
+        "status": { "type": "string" },
+        "financialYear": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "dateOfIsolation", "plantId", "financialYear"]
+    },
+    "EquipmentIssue": {
+      "title": "Equipment Issue",
+      "description": "Record of faulty equipment.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "dateOfIssue": { "type": "string" },
+        "plantId": { "type": "string" },
+        "plantName": { "type": "string" },
+        "equipmentName": { "type": "string" },
+        "plantPerson": { "type": "string" },
+        "fireOfficerId": { "type": "string" },
+        "fireOfficerName": { "type": "string" },
+        "priority": { "type": "string" },
+        "status": { "type": "string" },
+        "resolutionDate": { "type": "string" },
+        "financialYear": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "dateOfIssue", "plantId", "financialYear"]
+    }
+  },
+  "firestore": {
+    "/categories/{categoryId}": { "schema": "SystemCategory", "description": "System Categories collection" },
+    "/subsystems/{subSystemId}": { "schema": "SubSystem", "description": "Sub-Systems collection" },
+    "/plants/{plantId}": { "schema": "Plant", "description": "Plants collection" },
+    "/testRecords/{recordId}": { "schema": "TestRecord", "description": "Test Records collection" },
+    "/users/{userId}": { "schema": "AppUser", "description": "App Users collection" },
+    "/isolationReports/{reportId}": { "schema": "IsolationReport", "description": "Isolation Reports collection" },
+    "/equipmentIssues/{issueId}": { "schema": "EquipmentIssue", "description": "Equipment Issues collection" },
+    "/settings/global": { "schema": { "type": "object", "properties": { "adminId": { "type": "string" }, "adminPassword": { "type": "string" } } }, "description": "Global settings document" },
+    "/activeYear/current": { "schema": { "type": "object", "properties": { "year": { "type": "string" } } }, "description": "Active financial year" }
+  }
+}
