@@ -8,9 +8,7 @@ service cloud.firestore {
 
     // --- Helpers ---
     function isSignedIn() {
-      // Temporarily allowing all access for "Final Test" as per user request
-      // because Anonymous Auth might be disabled in the Firebase Console.
-      return true; 
+      return request.auth != null;
     }
 
     function isValidId(id) {
@@ -50,72 +48,49 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'plantId', 'subSystemId', 'categoryId', 'financialYear', 'status']) &&
              data.id is string && data.id.size() <= 64 &&
              data.plantId is string && data.plantId.size() <= 64 &&
-             data.status is string && data.status in ['Completed', 'Pending', 'Overdue', 'Under Maintenance', 'Due Soon', 'Approved & Locked'];
+             data.status is string && data.status in ['Completed', 'Pending', 'Overdue', 'Under Maintenance', 'Due Soon'];
     }
 
     // --- Collection Rules ---
 
     match /plants/{plantId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(plantId) && isValidPlant(incoming());
+      allow update: if isSignedIn() && isValidPlant(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'code', 'subSystemId', 'unitType', 'financialYear'])
+      );
       allow delete: if isSignedIn();
     }
 
     match /categories/{catId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(catId) && isValidCategory(incoming());
+      allow update: if isSignedIn() && isValidCategory(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'icon', 'financialYear'])
+      );
       allow delete: if isSignedIn();
     }
 
     match /subsystems/{subId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(subId) && isValidSubSystem(incoming());
+      allow update: if isSignedIn() && isValidSubSystem(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'categoryId', 'financialYear'])
+      );
       allow delete: if isSignedIn();
     }
 
     match /testRecords/{recordId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(recordId) && (true || isValidTestRecord(incoming())); // Relaxed slightly for robustness
-      allow update: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(recordId) && isValidTestRecord(incoming());
+      allow update: if isSignedIn() && isValidTestRecord(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'status', 'healthCondition', 'testDate', 'dateOfTesting', 'deficiency', 
+          'remarks', 'testerName', 'checklist', 'updatedAt', 'attachmentUrl',
+          'actionTaken', 'financialYear', 'cycleId', 'cycle', 'scheduleMonth'
+        ])
+      );
       allow delete: if isSignedIn();
-    }
-
-    match /masterPlants/{id} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /deficiencies/{id} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /locations/{id} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /tag_numbers/{id} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /frequency_categories/{id} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /notifications/{id} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /activity_logs/{id} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
     }
 
     match /users/{userId} {
@@ -164,20 +139,9 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
     
-    match /equipmentMaster/{id} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-    
     match /historicalReports/{id} {
       allow read: if isSignedIn();
       allow write: if isSignedIn();
-    }
-
-    match /AuditLogs/{logId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false; // Immutable Logs
     }
 
     // Safety check path

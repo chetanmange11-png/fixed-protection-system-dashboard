@@ -1,0 +1,15 @@
+export const COLLECTIONS = {
+  PLANTS: 'plants',
+  LOCATIONS: 'locations',
+  TAG_NUMBERS: 'tag_numbers',
+  EQUIPMENT_TYPES: 'categories',
+  FREQUENCY_CATEGORIES: 'frequency_categories',
+  TEST_RECORDS: 'testRecords',
+  CHECKLISTS: 'checklistMaster',
+  DEFICIENCIES: 'deficiencies',
+  REPORTS: 'historicalReports',
+  NOTIFICATIONS: 'notifications',
+  ACTIVITY_LOGS: 'activity_logs',
+  USERS: 'users',
+  RECYCLE_BIN: 'recycleBin',
+};

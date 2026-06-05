@@ -26,7 +26,7 @@ import { dbApi } from '../db/storage';
 import { TestRecord, Plant, FinancialYear } from '../types';
 import { cn } from '../lib/utils';
 import { Badge } from '../components/ui/Badge';
-import { RecordEditModal } from '../components/shared/RecordEditModal';
+import { EquipmentHistoryModal } from '../components/shared/EquipmentHistoryModal';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
@@ -59,8 +59,8 @@ export default function OtherUnsatisfactory() {
   const unsatisfactoryRecords = records.filter(r => 
     r.healthCondition === 'Unsatisfactory' && 
     r.financialYear === currentYear &&
-    (r.plantName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-     r.tagNumber.toLowerCase().includes(searchTerm.toLowerCase()))
+    ((r.plantName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
+     (r.tagNumber || '').toLowerCase().includes((searchTerm || '').toLowerCase()))
   );
 
   const stats = React.useMemo(() => {
@@ -223,7 +223,7 @@ export default function OtherUnsatisfactory() {
         )}
       </div>
 
-      <RecordEditModal 
+      <EquipmentHistoryModal 
         isOpen={!!editingRecord}
         onClose={() => setEditingRecord(null)}
         record={editingRecord}

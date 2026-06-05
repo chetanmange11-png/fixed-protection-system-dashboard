@@ -26,12 +26,12 @@ import { Button } from '../components/ui/Button';
 import { AppInput } from '../components/ui/AppInput';
 import { Badge } from '../components/ui/Badge';
 import { dbApi } from '../db/storage';
-import { IsolationReport, Plant, FinancialYear } from '../types';
+import { IsolationReport, Plant, FinancialYear, ValveInfo } from '../types';
 import { Dialog } from '../components/ui/Dialog';
 import { cn } from '../lib/utils';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
@@ -42,14 +42,18 @@ export default function IsolationReports() {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = React.useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
+  const [reportToDelete, setReportToDelete] = React.useState<IsolationReport | null>(null);
   const [selectedReport, setSelectedReport] = React.useState<IsolationReport | null>(null);
   const [activeYear, setActiveYear] = React.useState<FinancialYear>('2024-25');
+  const [isSaving, setIsSaving] = React.useState(false);
   
   const [formData, setFormData] = React.useState<Partial<IsolationReport>>({
     plannedUnplanned: 'Planned',
     fireWaterIsolationType: 'Partial',
     status: 'Active',
-    dateOfIsolation: new Date().toISOString().split('T')[0]
+    dateOfIsolation: new Date().toISOString().split('T')[0],
+    valves: [{ id: Math.random().toString(36).substring(2, 9), tagName: '', status: 'Good', closed: false, opened: false }]
   });
 
   const approvalFileRef = React.useRef<HTMLInputElement>(null);
@@ -85,41 +89,90 @@ export default function IsolationReports() {
   };
 
   const handleSave = async () => {
-    if (!formData.plantId || !formData.affectedPlant || !formData.affectedArea || !formData.detailsOfJob) {
+    if (!formData.plantName || !formData.affectedPlant || !formData.affectedArea || !formData.detailsOfJob) {
       alert('Please fill all mandatory fields (Plant, Affected Plant, Affected Area, Details of Job)');
       return;
     }
+    
+    if (formData.valves?.some(v => v.status === 'Passing') && !formData.safetyNote) {
+       alert("Safety Note is mandatory when a valve is passing.");
+       return;
+    }
+    
+    if (!formData.valves || formData.valves.length === 0) {
+       alert("At least one valve must be isolated.");
+       return;
+    }
+    
+    // Safety Logic
+    if (formData.status === 'Active' && !formData.valves.every(v => v.closed)) {
+       alert("All valves must be checked as Start (Closed) before saving an active isolation.");
+       return;
+    }
+    
+    if (formData.status === 'Closed' && !formData.valves.every(v => v.opened)) {
+       alert("Cannot close isolation - not all valves are marked as Complete (Opened).");
+       return;
+    }
 
-    const selectedPlant = plants.find(p => p.id === formData.plantId);
-    const report: IsolationReport = {
-      ...(formData as IsolationReport),
-      id: formData.id || Math.random().toString(36).substr(2, 9),
-      plantName: selectedPlant?.name || '',
-      financialYear: activeYear,
-      status: formData.status || 'Active',
-      createdAt: formData.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    setIsSaving(true);
+    try {
+      const report: IsolationReport = {
+        ...(formData as IsolationReport),
+        id: formData.id || Math.random().toString(36).substr(2, 9),
+        plantId: formData.plantName,
+        plantName: formData.plantName || '',
+        financialYear: activeYear,
+        status: formData.status || 'Active',
+        createdAt: formData.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
 
-    await dbApi.saveIsolationReport(report);
-    await loadData();
-    setIsAddModalOpen(false);
-    setFormData({
-      plannedUnplanned: 'Planned',
-      fireWaterIsolationType: 'Partial',
-      status: 'Active',
-      dateOfIsolation: new Date().toISOString().split('T')[0]
-    });
+      await dbApi.saveIsolationReport(report);
+      await loadData();
+      setIsAddModalOpen(false);
+      setFormData({
+        plannedUnplanned: 'Planned',
+        fireWaterIsolationType: 'Partial',
+        status: 'Active',
+        dateOfIsolation: new Date().toISOString().split('T')[0],
+        valves: [{ id: Math.random().toString(36).substring(2, 9), tagName: '', status: 'Good', closed: false, opened: false }]
+      });
+    } catch (err: any) {
+      alert("Failed to save isolation report: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this isolation report?')) {
-      await dbApi.deleteIsolationReport(id);
-      await loadData();
+  const handleDelete = (report: IsolationReport) => {
+    setReportToDelete(report);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (reportToDelete) {
+      try {
+        const updated = { ...reportToDelete, deleted: true };
+        await dbApi.saveIsolationReport(updated);
+        await loadData();
+      } catch (err: any) {
+        alert("Failed to delete report: " + err.message);
+      } finally {
+        setIsDeleteModalOpen(false);
+        setReportToDelete(null);
+      }
     }
   };
 
   const toggleStatus = async (report: IsolationReport) => {
+    if (report.status === 'Active') {
+      if (!report.valves?.every(v => v.opened)) {
+         alert("Cannot clear/close isolation until all valves have their 'Opened' checkbox ticked.");
+         return; // Need to edit record to open them
+      }
+    }
+    
     const updated = {
       ...report,
       status: report.status === 'Active' ? 'Closed' as const : 'Active' as const
@@ -142,16 +195,19 @@ export default function IsolationReports() {
       ['FIELD', 'VALUE'],
       ['Plant Unit', report.plantName],
       ['Type of Isolation', report.plannedUnplanned],
-      ['Date of Isolation', report.dateOfIsolation],
+      ['Date of Isolation (Start)', `${report.dateOfIsolation} ${report.timeOfIsolation || ''}`],
+      ['Date of Isolation (Complete)', report.dateOfIsolationComplete ? `${report.dateOfIsolationComplete} ${report.timeOfIsolationComplete || ''}` : 'N/A'],
       ['Fire Water Isolation', report.fireWaterIsolationType],
       ['Affected Plant', report.affectedPlant],
       ['Affected Area', report.affectedArea],
+      ['Valve to be Isolated', report.valveToBeIsolated || 'N/A'],
+      ['Line Position', report.linePosition || 'N/A'],
       ['Job Details', report.detailsOfJob],
       ['Current Status', report.status],
       ['Created At', new Date(report.createdAt).toLocaleString()],
     ];
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: 40,
       head: [body[0]],
       body: body.slice(1),
@@ -168,10 +224,15 @@ export default function IsolationReports() {
       'ID': r.id,
       'Plant Unit': r.plantName,
       'Planned/Unplanned': r.plannedUnplanned,
-      'Date': r.dateOfIsolation,
+      'Start Date': r.dateOfIsolation,
+      'Start Time': r.timeOfIsolation || '',
+      'Complete Date': r.dateOfIsolationComplete || '',
+      'Complete Time': r.timeOfIsolationComplete || '',
       'Isolation Type': r.fireWaterIsolationType,
       'Affected Plant': r.affectedPlant,
       'Affected Area': r.affectedArea,
+      'Valve': r.valveToBeIsolated || '',
+      'Position': r.linePosition || '',
       'Details': r.detailsOfJob,
       'Status': r.status,
       'Financial Year': r.financialYear
@@ -184,10 +245,10 @@ export default function IsolationReports() {
   };
 
   const filteredReports = reports.filter(r => 
-    r.plantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.affectedPlant.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.affectedArea.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.detailsOfJob.toLowerCase().includes(searchTerm.toLowerCase())
+    (r.plantName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (r.affectedPlant || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (r.affectedArea || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (r.detailsOfJob || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
 
   const stats = {
@@ -218,12 +279,13 @@ export default function IsolationReports() {
             Excel Export
           </Button>
           <Button onClick={() => {
-            setFormData({
-              plannedUnplanned: 'Planned',
-              fireWaterIsolationType: 'Partial',
-              status: 'Active',
-              dateOfIsolation: new Date().toISOString().split('T')[0]
-            });
+      setFormData({
+        plannedUnplanned: 'Planned',
+        fireWaterIsolationType: 'Partial',
+        status: 'Active',
+        dateOfIsolation: new Date().toISOString().split('T')[0],
+        valves: [{ id: Math.random().toString(36).substring(2, 9), tagName: '', status: 'Good', closed: false, opened: false }]
+      });
             setIsAddModalOpen(true);
           }} className="rounded-xl shadow-lg shadow-blue-200">
             <Plus className="h-4 w-4 mr-2" />
@@ -346,10 +408,12 @@ export default function IsolationReports() {
                     <div className="space-y-2">
                        <div>
                          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center">
-                           <MapPin className="h-3 w-3 mr-1" />
-                           Affected Area
+                           <ShieldAlert className="h-3 w-3 mr-1" />
+                           Valves Isolated
                          </p>
-                         <p className="text-sm font-bold text-gray-800 ml-4 truncate">{report.affectedArea}</p>
+                         <p className="text-sm font-bold text-gray-800 ml-4 truncate">
+                           {report.valves?.length ? `${report.valves.length} Valve(s) Isolated` : (report.valveToBeIsolated ? '1 Valve Isolated' : 'None')}
+                         </p>
                        </div>
                        <div>
                          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center">
@@ -376,7 +440,7 @@ export default function IsolationReports() {
                          variant="ghost" 
                          size="icon" 
                          className="h-8 w-8 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity hover:text-rose-600"
-                         onClick={() => handleDelete(report.id)}
+                         onClick={() => handleDelete(report)}
                        >
                          <Trash2 className="h-4 w-4" />
                        </Button>
@@ -410,17 +474,17 @@ export default function IsolationReports() {
               <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Isolation Taken By Plant</label>
               <select 
                 className="w-full h-11 bg-gray-50 border-none rounded-xl px-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20"
-                value={formData.plantId || ''}
-                onChange={(e) => setFormData({...formData, plantId: e.target.value})}
+                value={formData.plantName || ''}
+                onChange={(e) => setFormData({...formData, plantName: e.target.value})}
               >
                 <option value="">Select Plant Unit...</option>
-                {plants.map(p => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}
+                {['ETTF-2', 'SBR', 'TF-1'].map(name => <option key={name} value={name}>{name}</option>)}
               </select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
                <div className="space-y-1.5">
-                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Planning Type</label>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Planned/Unplanned</label>
                   <div className="flex bg-gray-50 p-1 rounded-xl">
                      <button 
                        onClick={() => setFormData({...formData, plannedUnplanned: 'Planned'})}
@@ -459,31 +523,162 @@ export default function IsolationReports() {
                </div>
             </div>
 
-            <AppInput 
-              label="Date of Isolation" 
-              type="date"
-              value={formData.dateOfIsolation || ''}
-              onChange={(e) => setFormData({...formData, dateOfIsolation: e.target.value})}
-            />
+            {/* Start Date & Time */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Date of Isolation (Start)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input 
+                  type="date"
+                  className="w-full h-11 bg-gray-50 border-none rounded-xl px-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 font-mono"
+                  value={formData.dateOfIsolation || ''}
+                  onChange={(e) => setFormData({...formData, dateOfIsolation: e.target.value})}
+                />
+                <input 
+                  type="time"
+                  className="w-full h-11 bg-gray-50 border-none rounded-xl px-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 font-mono"
+                  value={formData.timeOfIsolation || ''}
+                  onChange={(e) => setFormData({...formData, timeOfIsolation: e.target.value})}
+                />
+              </div>
+            </div>
 
-            <AppInput 
-              label="Affected Plant" 
-              placeholder="Enter name of plant specifically impacted"
-              value={formData.affectedPlant || ''}
-              onChange={(e) => setFormData({...formData, affectedPlant: e.target.value})}
-            />
+            {/* Complete Date & Time */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Date of Isolation Complete</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input 
+                  type="date"
+                  className="w-full h-11 bg-gray-50 border-none rounded-xl px-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 font-mono"
+                  value={formData.dateOfIsolationComplete || ''}
+                  onChange={(e) => setFormData({...formData, dateOfIsolationComplete: e.target.value})}
+                />
+                <input 
+                  type="time"
+                  className="w-full h-11 bg-gray-50 border-none rounded-xl px-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 font-mono"
+                  value={formData.timeOfIsolationComplete || ''}
+                  onChange={(e) => setFormData({...formData, timeOfIsolationComplete: e.target.value})}
+                />
+              </div>
+            </div>
 
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
                <AppInput 
-                label="Affected Area Mapping" 
+                 label="Affected Plant" 
+                 placeholder="Enter name of plant specifically impacted"
+                 value={formData.affectedPlant || ''}
+                 onChange={(e) => setFormData({...formData, affectedPlant: e.target.value})}
+               />
+               <AppInput 
+                label="Affected Area" 
                 placeholder="Identify exact piping, tank or process line"
                 value={formData.affectedArea || ''}
                 onChange={(e) => setFormData({...formData, affectedArea: e.target.value})}
               />
             </div>
 
+            <div className="md:col-span-2 space-y-3 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+               <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center">
+                    <ShieldAlert className="h-4 w-4 mr-2" /> Isolated Valves Configuration
+                  </label>
+                  <Button variant="outline" size="sm" type="button" onClick={() => setFormData({...formData, valves: [...(formData.valves||[]), { id: Math.random().toString(36).substring(2, 9), tagName: '', status: 'Good', closed: false, opened: false }]})}>
+                    + Add Another Valve
+                  </Button>
+               </div>
+               
+               {formData.valves?.map((valve, idx) => (
+                  <div key={valve.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end p-3 bg-white rounded-xl border border-gray-200 shadow-sm relative group">
+                     <div className="md:col-span-4 space-y-1.5">
+                       <label className="text-[10px] font-bold text-gray-400 uppercase">Tag Name</label>
+                       <input type="text" className="w-full h-9 bg-gray-50 border border-gray-100 rounded-lg px-3 text-xs focus:ring-2 focus:ring-blue-500/20" value={valve.tagName} placeholder="Valve Tag/No..." onChange={(e) => {
+                         const newValves = [...(formData.valves || [])];
+                         newValves[idx].tagName = e.target.value;
+                         setFormData({...formData, valves: newValves});
+                       }}/>
+                     </div>
+                     <div className="md:col-span-3 space-y-1.5">
+                       <label className="text-[10px] font-bold text-gray-400 uppercase">Status</label>
+                       <select className="w-full h-9 bg-gray-50 border border-gray-100 rounded-lg px-3 text-[11px] font-semibold focus:ring-2 focus:ring-blue-500/20" value={valve.status} onChange={(e) => {
+                         const newValves = [...(formData.valves || [])];
+                         newValves[idx].status = e.target.value as any;
+                         setFormData({...formData, valves: newValves});
+                       }}>
+                          <option value="Good">Good</option>
+                          <option value="Passing" className="text-amber-600 font-bold">Passing</option>
+                          <option value="Seized" className="text-rose-500 font-bold">Seized</option>
+                       </select>
+                     </div>
+                     <div className="md:col-span-4 flex items-center justify-around h-9 bg-gray-50 rounded-lg border border-gray-100 px-2 mt-2 md:mt-0">
+                       <label className="flex items-center space-x-2 text-[10px] font-bold uppercase cursor-pointer">
+                          <input type="checkbox" className="rounded text-blue-600 focus:ring-blue-500" checked={valve.closed} onChange={(e) => {
+                            const newValves = [...(formData.valves||[])];
+                            newValves[idx].closed = e.target.checked;
+                            setFormData({...formData, valves: newValves});
+                          }}/>
+                          <span>Start (Closed)</span>
+                       </label>
+                       <div className="w-px h-4 bg-gray-200" />
+                       <label className="flex items-center space-x-2 text-[10px] font-bold uppercase cursor-pointer">
+                          <input type="checkbox" className="rounded text-emerald-600 focus:ring-emerald-500" checked={valve.opened} onChange={(e) => {
+                            const newValves = [...(formData.valves||[])];
+                            newValves[idx].opened = e.target.checked;
+                            setFormData({...formData, valves: newValves});
+                          }}/>
+                          <span>Complete (Opened)</span>
+                       </label>
+                     </div>
+                     <div className="md:col-span-1 flex justify-end pb-0.5 mt-2 md:mt-0">
+                       <Button variant="ghost" size="icon" type="button" className="h-8 w-8 text-rose-500 hover:bg-rose-50 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" onClick={() => {
+                          setFormData({...formData, valves: formData.valves?.filter((_, i) => i !== idx)});
+                       }}><Trash2 className="h-4 w-4" /></Button>
+                     </div>
+                  </div>
+               ))}
+
+               {formData.valves?.length === 0 && (
+                  <p className="text-xs text-rose-500 font-bold p-2 text-center bg-rose-50 rounded-xl">At least one valve must be registered.</p>
+               )}
+            </div>
+
+            {formData.valves?.some(v => v.status === 'Passing') && (
+              <div className="md:col-span-2 space-y-1.5 p-4 rounded-xl bg-amber-50 border border-amber-200">
+                <label className="text-xs font-black text-amber-700 uppercase tracking-widest flex items-center">
+                  <AlertTriangle className="h-4 w-4 mr-1"/> Safety Note (Mandatory)
+                </label>
+                <p className="text-[10px] text-amber-600 mb-2 font-medium">One or more valves are Passing. Please explain the additional isolation measures taken.</p>
+                <textarea 
+                  className="w-full h-20 bg-white border border-amber-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-amber-500/20 outline-none placeholder:text-amber-400/50"
+                  placeholder="E.g., Closed secondary block valve tag XYZ-123..."
+                  value={formData.safetyNote || ''}
+                  onChange={(e) => setFormData({...formData, safetyNote: e.target.value})}
+                  required
+                />
+              </div>
+            )}
+
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+               <AppInput 
+                label="Affected Area" 
+                placeholder="Identify exact piping, tank or process line"
+                value={formData.affectedArea || ''}
+                onChange={(e) => setFormData({...formData, affectedArea: e.target.value})}
+              />
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Line Position</label>
+                <select 
+                  className="w-full h-11 bg-gray-50 border-none rounded-xl px-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20"
+                  value={formData.linePosition || ''}
+                  onChange={(e) => setFormData({...formData, linePosition: e.target.value as any})}
+                >
+                  <option value="">Select Position...</option>
+                  <option value="Underground">Underground</option>
+                  <option value="Above Ground">Above Ground</option>
+                </select>
+              </div>
+            </div>
+
             <div className="md:col-span-2 space-y-1.5">
-              <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Technical Detail of Job</label>
+              <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Detail of Job</label>
               <textarea 
                 className="w-full h-24 bg-gray-50 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
                 placeholder="Describe the maintenance or emergency repair task..."
@@ -530,8 +725,14 @@ export default function IsolationReports() {
                  >Closed / Cleared</button>
              </div>
              <div className="flex space-x-3">
-               <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="rounded-xl">Cancel</Button>
-               <Button onClick={handleSave} className="rounded-xl shadow-lg shadow-blue-100 px-8">Commit Entry</Button>
+               <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="rounded-xl" disabled={isSaving}>Cancel</Button>
+               <Button 
+                onClick={handleSave} 
+                className="rounded-xl shadow-lg shadow-blue-100 px-8"
+                disabled={isSaving || !formData.valves?.length || (formData.status === 'Active' ? !formData.valves?.every(v => v.closed) : !formData.valves?.every(v => v.opened))}
+               >
+                {isSaving ? "Processing..." : (formData.status === 'Active' ? "Commit Entry" : "Clear Isolation")}
+               </Button>
              </div>
           </div>
         </div>
@@ -575,7 +776,8 @@ export default function IsolationReports() {
                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-1">Isolation Metadata</p>
                        <div className="grid grid-cols-2 gap-2 text-xs font-bold text-gray-700">
                           <span className="text-gray-400">Type:</span> <span>{selectedReport.plannedUnplanned}</span>
-                          <span className="text-gray-400">Date:</span> <span>{selectedReport.dateOfIsolation}</span>
+                          <span className="text-gray-400">Start:</span> <span>{selectedReport.dateOfIsolation} {selectedReport.timeOfIsolation || ''}</span>
+                          <span className="text-gray-400">Complete:</span> <span>{selectedReport.dateOfIsolationComplete ? `${selectedReport.dateOfIsolationComplete} ${selectedReport.timeOfIsolationComplete || ''}` : 'N/A'}</span>
                           <span className="text-gray-400">Fire Water:</span> <span>{selectedReport.fireWaterIsolationType}</span>
                        </div>
                     </div>
@@ -586,11 +788,46 @@ export default function IsolationReports() {
                     </div>
                  </div>
                  <div className="space-y-4">
-                    <div>
-                       <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-1">Job Specification</p>
-                       <p className="text-xs font-medium text-gray-700 leading-relaxed bg-gray-50 p-3 rounded-xl border border-gray-100">
-                          {selectedReport.detailsOfJob}
-                       </p>
+                    <div className="space-y-4">
+                       <div>
+                          <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-1">Technical Line Info</p>
+                          <div className="grid grid-cols-2 gap-2 text-xs font-bold text-gray-700">
+                             <span className="text-gray-400">Position:</span> <span>{selectedReport.linePosition || 'N/A'}</span>
+                          </div>
+                       </div>
+                       
+                       <div>
+                          <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-1">Isolated Valves</p>
+                          <div className="space-y-2">
+                             {selectedReport.valves?.length ? (
+                                selectedReport.valves.map(v => (
+                                   <div key={v.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg text-xs font-bold border border-gray-100">
+                                      <span>{v.tagName || 'Unnamed Tag'}</span>
+                                      <div className="flex space-x-2">
+                                        <Badge variant={v.status === 'Good' ? 'success' : v.status === 'Passing' ? 'warning' : 'danger'} className="text-[9px] uppercase tracking-wider">{v.status}</Badge>
+                                        <Badge variant={v.closed ? 'success' : 'default'} className="text-[9px] uppercase tracking-wider">{v.closed ? 'Closed' : 'Open'}</Badge>
+                                      </div>
+                                   </div>
+                                ))
+                             ) : (
+                                <p className="text-xs font-bold text-gray-700 bg-gray-50 p-2 rounded-lg">{selectedReport.valveToBeIsolated || 'N/A'}</p>
+                             )}
+                          </div>
+                       </div>
+                       
+                       {selectedReport.safetyNote && (
+                         <div className="bg-amber-50 p-3 rounded-xl border border-amber-100">
+                           <p className="text-[10px] font-black text-amber-600 uppercase tracking-[0.2em] mb-1 flex items-center"><AlertTriangle className="h-3 w-3 mr-1" /> Safety Note</p>
+                           <p className="text-xs font-medium text-amber-800">{selectedReport.safetyNote}</p>
+                         </div>
+                       )}
+                       
+                       <div>
+                          <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-1">Job Specification</p>
+                          <p className="text-xs font-medium text-gray-700 leading-relaxed bg-gray-50 p-3 rounded-xl border border-gray-100">
+                             {selectedReport.detailsOfJob}
+                          </p>
+                       </div>
                     </div>
                  </div>
               </div>
@@ -644,8 +881,14 @@ export default function IsolationReports() {
                  </div>
                  <div className="flex space-x-3">
                     <Button variant="outline" onClick={() => setIsViewModalOpen(false)} className="rounded-xl">Close View</Button>
-                    <Button onClick={() => {
-                      setFormData(selectedReport);
+                     <Button onClick={() => {
+                      const updatedFormData: Partial<IsolationReport> = {
+                         ...selectedReport,
+                         valves: selectedReport.valves?.length 
+                            ? selectedReport.valves 
+                            : (selectedReport.valveToBeIsolated ? [{ id: Math.random().toString(36).substring(2, 9), tagName: selectedReport.valveToBeIsolated, status: 'Good', closed: true, opened: selectedReport.status === 'Closed' }] : [])
+                      };
+                      setFormData(updatedFormData);
                       setIsViewModalOpen(false);
                       setIsAddModalOpen(true);
                     }} className="rounded-xl bg-gray-900 hover:bg-black">Edit Record</Button>
@@ -654,6 +897,47 @@ export default function IsolationReports() {
             </motion.div>
           )}
         </AnimatePresence>
+      </Dialog>
+
+      <Dialog 
+        isOpen={isDeleteModalOpen} 
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setReportToDelete(null);
+        }}
+        title=""
+        maxWidth="max-w-md"
+        className="bg-gray-900 border border-gray-800"
+      >
+        <div className="text-center space-y-6">
+          <div className="mx-auto w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-6">
+            <Trash2 className="h-8 w-8 text-rose-500" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-black text-white tracking-tight">Confirm Deletion</h3>
+            <p className="text-gray-400 font-mono text-sm leading-relaxed">
+              Are you sure you want to move this report to the Recycle Bin?
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setIsDeleteModalOpen(false);
+                setReportToDelete(null);
+              }}
+              className="w-full sm:w-auto rounded-xl border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={confirmDelete}
+              className="w-full sm:w-auto rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold"
+            >
+              Move to Recycle Bin
+            </Button>
+          </div>
+        </div>
       </Dialog>
     </div>
   );

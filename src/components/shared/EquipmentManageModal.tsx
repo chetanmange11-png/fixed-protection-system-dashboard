@@ -9,25 +9,53 @@ import { Plant, SubSystem, SystemCategory, Frequency, MaintenanceCycle, PlantEqu
 import { cn } from '../../lib/utils';
 import { ShieldCheck, Plus, Trash2, Link as LinkIcon } from 'lucide-react';
 
+import { useGlobalStore } from '../../store/useGlobalStore';
+
 interface EquipmentManageModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: () => void;
+  initialCategoryId?: string | null;
 }
 
-export function EquipmentManageModal({ isOpen, onClose, onSave }: EquipmentManageModalProps) {
+export function EquipmentManageModal({ isOpen, onClose, onSave, initialCategoryId }: EquipmentManageModalProps) {
+  const { theme } = useGlobalStore();
   const [plants, setPlants] = React.useState<Plant[]>([]);
   const [categories, setCategories] = React.useState<SystemCategory[]>([]);
   const [subSystems, setSubSystems] = React.useState<SubSystem[]>([]);
   const [existingMappings, setExistingMappings] = React.useState<any[]>([]);
 
   const [selectedPlantId, setSelectedPlantId] = React.useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = React.useState('');
   const [selectedSubSystemId, setSelectedSubSystemId] = React.useState('');
   const [selectedFrequency, setSelectedFrequency] = React.useState<MaintenanceCycle>('Q1');
   const [tagNumber, setTagNumber] = React.useState('');
 
+  const getFilteredSubSystems = (catId: string) => {
+    return subSystems.filter(s => s.categoryId === catId);
+  };
+
+  const getFilteredPlants = (subId: string) => {
+    if (!subId) return [];
+    // Only show plants that were either created in this subfolder OR are unassigned/can be linked
+    return plants.filter(p => p.subSystemId === subId || !p.subSystemId);
+  };
+
+  React.useEffect(() => {
+    if (selectedPlantId && !tagNumber) {
+      const plant = plants.find(p => p.id === selectedPlantId);
+      if (plant) {
+        const prefix = plant.name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        setTagNumber(`${prefix}-`);
+      }
+    }
+  }, [selectedPlantId, plants, tagNumber]);
+
   React.useEffect(() => {
     if (isOpen) {
+      if (initialCategoryId) {
+        setSelectedCategoryId(initialCategoryId);
+      }
       const load = async () => {
         await dbApi.init();
         const [allPlants, allCats, allSubs] = await Promise.all([
@@ -56,6 +84,8 @@ export function EquipmentManageModal({ isOpen, onClose, onSave }: EquipmentManag
     const sub = subSystems.find(s => s.id === selectedSubSystemId);
     const category = categories.find(c => c.id === sub?.categoryId);
 
+    const activeYear = await dbApi.getActiveYear();
+
     // Create a mapping entry
     const newMapping = {
       plantId: selectedPlantId,
@@ -66,6 +96,7 @@ export function EquipmentManageModal({ isOpen, onClose, onSave }: EquipmentManag
       categoryName: category?.name,
       tagNumber,
       cycle: selectedFrequency,
+      financialYear: activeYear,
       status: 'Pending',
       lastTestDate: '',
       updatedAt: new Date().toISOString()
@@ -99,39 +130,64 @@ export function EquipmentManageModal({ isOpen, onClose, onSave }: EquipmentManag
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 py-4">
         {/* Creation Side */}
         <div className="space-y-6">
-          <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100/50">
-            <h3 className="text-sm font-black text-blue-900 uppercase tracking-widest mb-6 flex items-center">
+          <div className={cn("p-6 rounded-3xl border", theme === 'modern' ? "bg-slate-900/60 border-slate-800" : "bg-[#C09532]/5 border-[#C09532]/10")}>
+            <h3 className={cn("text-sm font-black uppercase tracking-widest mb-6 flex items-center", theme === 'modern' ? "text-[#D4AF37]" : "text-[#C09532]")}>
               <Plus className="h-4 w-4 mr-2" />
               Assign New System
             </h3>
             
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-500 uppercase">Select Facility</label>
+                <label className={cn("text-xs font-bold uppercase", theme === 'modern' ? "text-slate-400" : "text-gray-500")}>System Category</label>
                 <select 
-                  className="w-full h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium focus:ring-2 focus:ring-blue-500/20"
+                  className={cn("w-full h-11 rounded-xl border px-4 text-sm font-medium focus:ring-2 transition-all", theme === 'modern' ? "bg-slate-800 border-slate-700 text-slate-200 focus:ring-[#D4AF37]/30" : "bg-white border-gray-200 focus:ring-[#C09532]/20")}
+                  value={selectedCategoryId}
+                  onChange={(e) => {
+                    setSelectedCategoryId(e.target.value);
+                    setSelectedSubSystemId('');
+                    setSelectedPlantId('');
+                  }}
+                >
+                  <option value="">Select Category...</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className={cn("text-xs font-bold uppercase", theme === 'modern' ? "text-slate-400" : "text-gray-500")}>Equipment / Sub-System Folder</label>
+                <select 
+                  className={cn("w-full h-11 rounded-xl border px-4 text-sm font-medium focus:ring-2 disabled:opacity-50 transition-all", theme === 'modern' ? "bg-slate-800 border-slate-700 text-slate-200 focus:ring-[#D4AF37]/30" : "bg-white border-gray-200 focus:ring-blue-500/20")}
+                  value={selectedSubSystemId}
+                  onChange={(e) => {
+                    setSelectedSubSystemId(e.target.value);
+                    setSelectedPlantId('');
+                  }}
+                  disabled={!selectedCategoryId}
+                >
+                  <option value="">Select Sub-folder...</option>
+                  {getFilteredSubSystems(selectedCategoryId).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className={cn("text-xs font-bold uppercase", theme === 'modern' ? "text-slate-400" : "text-gray-500")}>Select Facility</label>
+                <select 
+                  className={cn("w-full h-11 rounded-xl border px-4 text-sm font-medium focus:ring-2 disabled:opacity-50 transition-all", theme === 'modern' ? "bg-slate-800 border-slate-700 text-slate-200 focus:ring-[#D4AF37]/30" : "bg-white border-gray-200 focus:ring-blue-500/20")}
                   value={selectedPlantId}
                   onChange={(e) => setSelectedPlantId(e.target.value)}
+                  disabled={!selectedSubSystemId}
                 >
                   <option value="">Choose Plant...</option>
-                  {plants.map(p => <option key={p.id} value={p.id}>{p.code}: {p.name}</option>)}
+                  {getFilteredPlants(selectedSubSystemId).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
                 </select>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-500 uppercase">Equipment System</label>
-                <select 
-                  className="w-full h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium focus:ring-2 focus:ring-blue-500/20"
-                  value={selectedSubSystemId}
-                  onChange={(e) => setSelectedSubSystemId(e.target.value)}
-                >
-                  <option value="">Select Catalog Item...</option>
-                  {subSystems.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-500 uppercase">Testing Frequency</label>
+                <label className={cn("text-xs font-bold uppercase", theme === 'modern' ? "text-slate-400" : "text-gray-500")}>Testing Frequency</label>
                 <div className="grid grid-cols-2 gap-2">
                   {['Q1', 'Q2', 'Q3', 'Q4', 'First Semiannual', 'Second Semiannual', 'Annual'].map(f => (
                     <button
@@ -140,7 +196,9 @@ export function EquipmentManageModal({ isOpen, onClose, onSave }: EquipmentManag
                       onClick={() => setSelectedFrequency(f as MaintenanceCycle)}
                       className={cn(
                         "px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all",
-                        selectedFrequency === f ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-gray-100 text-gray-400 hover:border-gray-300"
+                        selectedFrequency === f 
+                          ? (theme === 'modern' ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow-[0_0_10px_rgba(212,175,55,0.2)]" : "bg-[#C09532] border-[#C09532] text-white") 
+                          : (theme === 'modern' ? "bg-slate-800 border-slate-700 text-slate-400 hover:border-[#D4AF37]/50" : "bg-white border-gray-100 text-gray-400 hover:border-gray-300")
                       )}
                     >
                       {f}
@@ -156,7 +214,7 @@ export function EquipmentManageModal({ isOpen, onClose, onSave }: EquipmentManag
                 onChange={(e) => setTagNumber(e.target.value)}
               />
 
-              <Button onClick={handleAddMapping} className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black shadow-lg shadow-blue-500/20">
+              <Button onClick={handleAddMapping} className="w-full h-12 bg-[#C09532] hover:bg-[#A88028] text-white rounded-2xl font-black shadow-lg shadow-[#C09532]/20">
                 Establish Mapping
               </Button>
             </div>
@@ -166,22 +224,22 @@ export function EquipmentManageModal({ isOpen, onClose, onSave }: EquipmentManag
         {/* List Side */}
         <div className="space-y-6">
           <div className="flex items-center justify-between px-2">
-             <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest flex items-center">
-               <LinkIcon className="h-4 w-4 mr-2 text-blue-500" />
+             <h3 className={cn("text-xs font-black uppercase tracking-widest flex items-center", theme === 'modern' ? "text-slate-100" : "text-gray-900")}>
+               <LinkIcon className={cn("h-4 w-4 mr-2", theme === 'modern' ? "text-[#D4AF37]" : "text-[#C09532]")} />
                Current Assignments 
              </h3>
-             <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full font-bold text-gray-500">{filteredMappings.length} Connected</span>
+             <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", theme === 'modern' ? "bg-slate-800 text-slate-400" : "bg-gray-100 text-gray-500")}>{filteredMappings.length} Connected</span>
           </div>
 
           <div className="space-y-3 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
             {filteredMappings.length > 0 ? filteredMappings.map((m) => (
-              <div key={m.id} className="p-4 bg-white border border-gray-100 rounded-2xl flex items-center justify-between group hover:border-blue-200 transition-all">
+              <div key={m.id} className={cn("p-4 rounded-2xl border flex items-center justify-between group transition-all", theme === 'modern' ? "bg-slate-900/40 border-slate-800 hover:border-[#D4AF37]/50" : "bg-white border-gray-100 hover:border-[#C09532]/20")}>
                 <div>
                   <div className="flex items-center space-x-2">
-                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em]">{m.tagNumber}</span>
+                    <span className={cn("text-[10px] font-black uppercase tracking-[0.2em]", theme === 'modern' ? "text-[#D4AF37]" : "text-[#C09532]")}>{m.tagNumber}</span>
                   </div>
-                  <p className="text-sm font-bold text-gray-900 mt-0.5">{subSystems.find(s => s.id === m.subSystemId)?.name}</p>
-                  <p className="text-[10px] text-gray-400 uppercase font-bold mt-1">{m.frequency}</p>
+                  <p className={cn("text-sm font-bold mt-0.5", theme === 'modern' ? "text-slate-100" : "text-gray-900")}>{subSystems.find(s => s.id === m.subSystemId)?.name}</p>
+                  <p className={cn("text-[10px] uppercase font-bold mt-1", theme === 'modern' ? "text-slate-500" : "text-gray-400")}>{m.frequency}</p>
                 </div>
                 <Button 
                   variant="ghost" 
@@ -190,7 +248,7 @@ export function EquipmentManageModal({ isOpen, onClose, onSave }: EquipmentManag
                     await dbApi.deletePlantEquipment(m.id);
                     setExistingMappings(await dbApi.getPlantEquipment(selectedPlantId));
                   }}
-                  className="bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-xl h-8 w-8 opacity-0 group-hover:opacity-100 transition-all"
+                  className={cn("rounded-xl h-8 w-8 opacity-0 group-hover:opacity-100 transition-all", theme === 'modern' ? "text-red-400 hover:bg-slate-800" : "bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white")}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>

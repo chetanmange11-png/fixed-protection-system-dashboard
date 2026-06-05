@@ -7,80 +7,70 @@ import { AppInput } from '../components/ui/AppInput';
 import { dbApi } from '../db/storage';
 import { SubSystem, SystemCategory, TestRecord } from '../types';
 import { Dialog } from '../components/ui/Dialog';
-import { AdminAuthModal } from '../components/shared/AdminAuthModal';
 import { Breadcrumbs } from '../components/shared/Breadcrumbs';
+import { AdminDeleteGateModal } from '../components/shared/AdminDeleteGateModal';
+import { useGlobalStore } from '../store/useGlobalStore';
+import { cn } from '../lib/utils';
 
 export default function SubSystems() {
   const { categoryId } = useParams();
   const navigate = useNavigate();
-  const [category, setCategory] = React.useState<SystemCategory | null>(null);
-  const [subSystems, setSubSystems] = React.useState<SubSystem[]>([]);
-  const [records, setRecords] = React.useState<TestRecord[]>([]);
+  const { theme, categories, subSystems: allSubSystems, records: allRecords, activeCycle } = useGlobalStore();
   const [searchTerm, setSearchTerm] = React.useState('');
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = React.useState(false);
   const [newName, setNewName] = React.useState('');
   const [renamingSub, setRenamingSub] = React.useState<SubSystem | null>(null);
   const [renamedName, setRenamedName] = React.useState('');
+  const [deleteGate, setDeleteGate] = React.useState<{ isOpen: boolean; id: string; name: string } | null>(null);
 
-  // Admin Auth State
-  const [authModal, setAuthModal] = React.useState({
-    isOpen: false,
-    id: '',
-    name: ''
-  });
+  const [isProcessing, setIsProcessing] = React.useState(false);
 
-  const loadData = React.useCallback(async () => {
-    if (!categoryId) return;
-    await dbApi.init();
-    const [cats, subs, recs] = await Promise.all([
-      dbApi.getCategories(),
-      dbApi.getSubSystems(categoryId),
-      dbApi.getTestRecords()
-    ]);
-    const currentCat = cats.find(c => c.id === categoryId);
-    if (currentCat) setCategory(currentCat);
-    else setCategory(null);
-    setSubSystems(subs);
-    setRecords(recs.filter(r => r.categoryId === categoryId));
-  }, [categoryId]);
-
-  React.useEffect(() => {
-    loadData();
-    window.addEventListener('fy-change', loadData);
-    return () => window.removeEventListener('fy-change', loadData);
-  }, [loadData]);
+  const category = categories.find(c => c.id === categoryId) || null;
+  const subSystems = allSubSystems.filter(s => s.categoryId === categoryId);
+  const records = allRecords.filter(r => r.categoryId === categoryId && r.financialYear === activeCycle);
 
   const handleAdd = async () => {
     if (!newName || !categoryId) return;
+    setIsProcessing(true);
     const newItem = {
       id: Math.random().toString(36).substr(2, 9),
       categoryId,
       name: newName
     };
     await dbApi.saveSubSystem(newItem);
-    await loadData();
     setNewName('');
     setIsAddModalOpen(false);
+    setIsProcessing(false);
   };
 
   const handleRename = async () => {
     if (!renamedName || !renamingSub) return;
+    setIsProcessing(true);
     await dbApi.renameSubSystem(renamingSub.id, renamedName);
-    await loadData();
     setIsRenameModalOpen(false);
     setRenamingSub(null);
     setRenamedName('');
+    setIsProcessing(false);
   };
 
-  const handleDeleteSub = async () => {
-    await dbApi.deleteSubSystem(authModal.id);
-    setAuthModal({ ...authModal, isOpen: false });
-    await loadData();
+  const handleDeleteSubFolder = async (subFolderId: string) => {
+    setIsProcessing(true);
+    useGlobalStore.setState(state => ({
+      subSystems: state.subSystems.filter(s => s.id !== subFolderId),
+      records: state.records.filter(r => r.subSystemId !== subFolderId)
+    }));
+    try {
+      await dbApi.deleteSubSystem(subFolderId);
+    } catch (error) {
+      console.error("Failed to delete sub-folder from Firebase:", error);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const filtered = subSystems.filter(s => 
-    s.name.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.name || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
 
   return (
@@ -102,30 +92,30 @@ export default function SubSystems() {
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="relative w-full sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
           <AppInput 
             placeholder="Search sub-folders..." 
-            className="pl-10" 
+            className="pl-10 h-11 md:h-12" 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button onClick={() => setIsAddModalOpen(true)}>
+        <Button onClick={() => setIsAddModalOpen(true)} className="h-11 md:h-12 shadow-md">
           <Plus className="h-5 w-5 mr-2" />
           Add Sub-folder
         </Button>
       </div>
 
       {filtered.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-gray-100 p-12 text-center shadow-sm">
-          <div className="h-20 w-20 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className={cn("rounded-3xl border p-12 text-center shadow-sm", theme === 'modern' ? "bg-slate-900/60 border-slate-800" : "bg-white border-gray-100")}>
+          <div className={cn("h-20 w-20 rounded-full flex items-center justify-center mx-auto mb-4", theme === 'modern' ? "bg-[#D4AF37]/10 text-[#D4AF37]" : "bg-blue-50 text-blue-500")}>
             <Layers className="h-10 w-10" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">No sub-folders found</h2>
-          <p className="text-gray-500 max-w-sm mx-auto mb-6">
-            Get started by creating a new sub-folder to organize your plants and units in this category.
+          <h2 className={cn("text-xl font-bold mb-2", theme === 'modern' ? "text-slate-100" : "text-gray-900")}>No sub-folders found</h2>
+          <p className={cn("max-w-sm mx-auto mb-6", theme === 'modern' ? "text-slate-400" : "text-gray-500")}>
+            Get started by creating a new sub-folder to organize your folder units in this category.
           </p>
           <Button onClick={() => setIsAddModalOpen(true)} className="rounded-full px-8 shadow-md" variant="primary">
             <Plus className="h-5 w-5 mr-2" />
@@ -136,83 +126,98 @@ export default function SubSystems() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filtered.map((sub) => {
             const subRecords = records.filter(r => r.subSystemId === sub.id);
-            const totalRecordsCount = subRecords.length;
             const completedRecordsCount = subRecords.filter(r => r.status === 'Completed').length;
             
             return (
               <Card 
                 key={sub.id} 
-                className="group cursor-pointer hover:border-blue-300 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-0 overflow-hidden rounded-3xl border-gray-100 shadow-sm"
+                className={cn(
+                  "group cursor-pointer p-0 overflow-hidden rounded-3xl transition-all duration-300 shadow-sm",
+                  theme === 'modern' ? "bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 hover:border-[#D4AF37]/50 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] hover:-translate-y-1" : "hover:border-blue-300 hover:shadow-xl hover:-translate-y-1 border-gray-100"
+                )}
               >
                 <div 
-                  className="bg-gradient-to-br from-gray-50 to-gray-100 p-6 flex flex-col items-center justify-center group-hover:from-blue-50 group-hover:to-blue-100 transition-colors relative"
+                  className={cn(
+                    "p-6 flex flex-col items-center justify-center transition-colors relative",
+                    theme === 'modern' ? "bg-slate-900/40 backdrop-blur-xl border-b border-slate-800/50 group-hover:bg-slate-900/60" : "bg-gradient-to-br from-gray-50 to-gray-100 group-hover:from-blue-50 group-hover:to-blue-100"
+                  )}
                   onClick={() => navigate(`/categories/${categoryId}/${sub.id}`)}
                 >
                   {/* Decorative background circle */}
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-white/40 rounded-full blur-xl group-hover:bg-blue-200/40 transition-colors" />
+                  <div className={cn(
+                    "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full blur-xl transition-colors",
+                    theme === 'modern' ? "bg-[#D4AF37]/5 group-hover:bg-[#D4AF37]/10" : "bg-white/40 group-hover:bg-blue-200/40"
+                  )} />
                   
-                  <div className="p-4 bg-white/90 backdrop-blur border border-white/50 rounded-2xl shadow-sm group-hover:scale-110 group-hover:shadow-md transition-all relative z-10 mb-4">
-                    <Layers className="h-8 w-8 text-blue-600 drop-shadow-sm" />
+                  <div className={cn(
+                    "p-4 rounded-2xl shadow-sm group-hover:scale-110 transition-all relative z-10 mb-4",
+                    theme === 'modern' ? "bg-slate-800/90 border border-slate-700/50 group-hover:shadow-[0_0_15px_rgba(212,175,55,0.2)]" : "bg-white/90 backdrop-blur border border-white/50 group-hover:shadow-md"
+                  )}>
+                    <Layers className={cn("h-8 w-8 drop-shadow-sm", theme === 'modern' ? "text-[#D4AF37]" : "text-blue-600")} />
                   </div>
                   
-                  <h3 className="text-lg font-bold text-gray-900 truncate w-full text-center group-hover:text-blue-700 transition-colors relative z-10" title={sub.name}>
+                  <h3 className={cn("text-lg font-bold truncate w-full text-center transition-colors relative z-10", theme === 'modern' ? "text-slate-100 group-hover:text-[#D4AF37]" : "text-gray-900 group-hover:text-blue-700")} title={sub.name}>
                     {sub.name}
                   </h3>
                 </div>
                 
-                <div className="p-5 bg-white relative">
-                  <div className="absolute -top-6 right-3 flex space-x-1 opacity-0 group-hover:opacity-100 transition-all group-hover:-translate-y-1 z-20">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 bg-white shadow-sm border border-gray-100 hover:bg-blue-50 text-gray-500 rounded-full"
-                      title="Rename Sub-folder"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setRenamingSub(sub);
-                        setRenamedName(sub.name);
-                        setIsRenameModalOpen(true);
-                      }}
-                    >
-                      <Edit className="h-3 w-3 text-blue-600" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 bg-white shadow-sm border border-gray-100 hover:bg-red-50 text-gray-500 rounded-full"
-                      title="Delete Sub-folder"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAuthModal({
-                          isOpen: true,
-                          id: sub.id,
-                          name: sub.name
-                        });
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3 text-red-500" />
-                    </Button>
+                <div className={cn("p-5 relative", theme === 'modern' ? "bg-slate-900/60 backdrop-blur-xl" : "bg-white")}>
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="flex space-x-2">
+                       <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className={cn("h-8 w-8 rounded-lg border", theme === 'modern' ? "bg-transparent border-transparent text-slate-400 hover:text-[#D4AF37] hover:bg-slate-800/50" : "bg-gray-50 hover:bg-blue-50 text-blue-600 border-gray-100")}
+                        title="Rename Folder"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRenamingSub(sub);
+                          setRenamedName(sub.name);
+                          setIsRenameModalOpen(true);
+                        }}
+                      >
+                        <Edit className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className={cn("h-8 w-8 rounded-lg border", theme === 'modern' ? "bg-transparent border-transparent text-slate-400 hover:text-[#D4AF37] hover:bg-slate-800/50" : "bg-gray-50 hover:bg-red-50 text-red-500 border-gray-100")}
+                        title="Delete Folder"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteGate({ isOpen: true, id: sub.id, name: sub.name });
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                   
                   {/* Embedded Stats Section */}
-                  <div className="flex items-center gap-3 bg-gray-50/80 border border-gray-100 rounded-xl p-3 mb-4">
+                  <div className={cn("flex items-center gap-3 rounded-xl p-3 mb-4", theme === 'modern' ? "bg-slate-950/60 border border-slate-800" : "bg-gray-50/80 border border-gray-100")}>
                     <div className="flex flex-col flex-1 pl-1">
-                      <span className="text-base font-black text-gray-900 leading-none">{totalRecordsCount}</span>
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Total tests</span>
+                      <span className={cn("text-base font-black leading-none", theme === 'modern' ? "text-[#D4AF37]" : "text-gray-900")}>{sub.totalPlants || 0}</span>
+                      <span className={cn("text-[9px] font-bold uppercase tracking-wider mt-1", theme === 'modern' ? "text-slate-400" : "text-gray-400")}>Total Plants</span>
                     </div>
-                    <div className="w-px h-6 bg-gray-200"></div>
+                    <div className={cn("w-px h-6", theme === 'modern' ? "bg-slate-800" : "bg-gray-200")}></div>
                     <div className="flex flex-col flex-1">
-                      <span className="text-base font-black text-blue-600 leading-none">{completedRecordsCount}</span>
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Completed</span>
+                      <span className={cn("text-base font-black leading-none", theme === 'modern' ? "text-[#D4AF37]" : "text-blue-600")}>{completedRecordsCount}</span>
+                      <span className={cn("text-[9px] font-bold uppercase tracking-wider mt-1", theme === 'modern' ? "text-slate-400" : "text-gray-400")}>Completed Tests</span>
                     </div>
                   </div>
 
                   <div 
-                    className="flex justify-between items-center text-blue-600 text-sm font-semibold transition-all cursor-pointer p-2 -mx-2 rounded-lg hover:bg-blue-50/50"
+                    className={cn(
+                      "flex justify-between items-center text-sm font-semibold transition-all cursor-pointer p-2 -mx-2 rounded-lg",
+                      theme === 'modern' ? "text-[#D4AF37] hover:bg-slate-800/50 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] group-hover:drop-shadow-[0_0_8px_rgba(212,175,55,0.8)]" : "text-blue-600 hover:bg-blue-50/50"
+                    )}
                     onClick={() => navigate(`/categories/${categoryId}/${sub.id}`)}
                   >
                     <span>View Dashboard</span>
-                    <div className="bg-blue-100 text-blue-600 p-1.5 rounded-full group-hover:translate-x-1 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <div className={cn(
+                      "p-1.5 rounded-full transition-all",
+                      theme === 'modern' ? "bg-transparent text-[#D4AF37] group-hover:translate-x-1 group-hover:shadow-[0_0_10px_rgba(212,175,55,0.4)]" : "bg-blue-100 text-blue-600 group-hover:translate-x-1 group-hover:bg-blue-600 group-hover:text-white"
+                    )}>
                       <ArrowRight className="h-4 w-4" />
                     </div>
                   </div>
@@ -222,13 +227,6 @@ export default function SubSystems() {
           })}
         </div>
       )}
-
-      <AdminAuthModal 
-        isOpen={authModal.isOpen}
-        onClose={() => setAuthModal({ ...authModal, isOpen: false })}
-        onConfirm={handleDeleteSub}
-        actionTitle={`Delete Sub-folder: ${authModal.name}`}
-      />
 
       <Dialog
         isOpen={isAddModalOpen}
@@ -267,6 +265,16 @@ export default function SubSystems() {
           </div>
         </div>
       </Dialog>
+
+      {deleteGate && (
+        <AdminDeleteGateModal
+          isOpen={deleteGate.isOpen}
+          onClose={() => setDeleteGate(null)}
+          onConfirm={() => handleDeleteSubFolder(deleteGate.id)}
+          targetName={deleteGate.name}
+          targetType="folder"
+        />
+      )}
     </div>
   );
 }

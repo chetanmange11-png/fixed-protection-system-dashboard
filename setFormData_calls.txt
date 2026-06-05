@@ -1,0 +1,107 @@
+332-}: EquipmentHistoryModalProps) {
+333:  const [formData, setFormData] = React.useState<Partial<TestRecord>>({});
+334-  const [imageFile, setImageFile] = React.useState<File | null>(null);
+--
+428-                setActiveTabId(targetRecord.id);
+429:                setFormData({
+430-                  ...targetRecord,
+--
+484-                const parsed = JSON.parse(draft);
+485:                setFormData({ ...baseData, ...parsed });
+486-                toast.success("Resumed from auto-saved draft");
+487-              } catch (e) {
+488:                setFormData(baseData);
+489-              }
+490-            } else {
+491:              setFormData(baseData);
+492-            }
+--
+526-              const parsed = JSON.parse(draft);
+527:              setFormData({ ...baseData, ...parsed });
+528-              toast.success("Resumed from auto-saved draft");
+529-            } catch (e) {
+530:              setFormData(baseData);
+531-            }
+532-          } else {
+533:            setFormData(baseData);
+534-          }
+--
+555-      setActiveTabId(historyId);
+556:      setFormData({ ...historicalRecord });
+557-      setImageFile(null);
+--
+616-      setActiveTabId(futureId);
+617:      setFormData({ ...futureRecord });
+618-      setImageFile(null);
+--
+638-    }
+639:    setFormData({ ...formData, checklist: updated });
+640-  };
+--
+995-                    const plant = plants.find((p) => p.name === e.target.value);
+996:                    setFormData({
+997-                      ...formData,
+--
+1039-
+1040:                      setFormData({
+1041-                        ...formData,
+--
+1049-                    } else {
+1050:                      setFormData({
+1051-                        ...formData,
+--
+1090-                  onChange={(e) =>
+1091:                    setFormData({ ...formData, tagNumber: e.target.value })
+1092-                  }
+--
+1116-                  onChange={(e) =>
+1117:                    setFormData({ ...formData, location: e.target.value })
+1118-                  }
+--
+1131-                  onChange={(e) =>
+1132:                    setFormData({ ...formData, dateOfTesting: e.target.value })
+1133-                  }
+--
+1143-                  onChange={(e) =>
+1144:                    setFormData({
+1145-                      ...formData,
+--
+1166-                  onChange={(e) =>
+1167:                    setFormData({ ...formData, testedBy: e.target.value })
+1168-                  }
+--
+1187-                  onChange={(e) =>
+1188:                    setFormData({ ...formData, plantPersonnel: e.target.value })
+1189-                  }
+--
+1238-                        setImagePreview(null);
+1239:                        setFormData({ ...formData, attachmentUrl: "" });
+1240-                      }}
+--
+1259-                  onChange={(e) =>
+1260:                    setFormData({
+1261-                      ...formData,
+--
+1280-                  onChange={(e) =>
+1281:                    setFormData({
+1282-                      ...formData,
+--
+1306-                onChange={(e) =>
+1307:                  setFormData({ ...formData, deficienciesText: e.target.value })
+1308-                }
+--
+1321-                onChange={(e) =>
+1322:                  setFormData({ ...formData, complianceText: e.target.value })
+1323-                }
+--
+1336-                  onChange={(e) =>
+1337:                    setFormData({
+1338-                      ...formData,
+--
+1365-                  onChange={(e) =>
+1366:                    setFormData({
+1367-                      ...formData,
+--
+1447-                            };
+1448:                            setFormData({
+1449-                              ...formData,

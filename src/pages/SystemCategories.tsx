@@ -1,103 +1,112 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Folder, MoreVertical, ArrowRight, Download, Trash2, Edit } from 'lucide-react';
+import { Plus, Search, Folder, MoreVertical, ArrowRight, Download, Trash2, Edit, Calendar } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { AppInput } from '../components/ui/AppInput';
-import { dbApi } from '../db/storage';
 import { SystemCategory, TestRecord, SubSystem } from '../types';
 import { Dialog } from '../components/ui/Dialog';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
-import { AdminAuthModal } from '../components/shared/AdminAuthModal';
+import autoTable from 'jspdf-autotable';
+import { dbApi } from '../db/storage';
+import { createDocument, updateDocument, deleteDocument } from '../services/firestoreService';
+import { useGlobalStore } from '../store/useGlobalStore';
+import { cn } from '../lib/utils';
+import { AdminDeleteGateModal } from '../components/shared/AdminDeleteGateModal';
 
 export default function SystemCategories() {
   const navigate = useNavigate();
-  const [categories, setCategories] = React.useState<SystemCategory[]>([]);
-  const [subSystems, setSubSystems] = React.useState<SubSystem[]>([]);
-  const [records, setRecords] = React.useState<TestRecord[]>([]);
+  const equipmentTypes = useGlobalStore(state => state.categories);
+  const allRecords = useGlobalStore(state => state.records);
+  const subSystems = useGlobalStore(state => state.subSystems);
+  const { theme, activeCycle } = useGlobalStore();
+  
+  const records = allRecords.filter(r => r.financialYear === activeCycle);
+  
   const [searchTerm, setSearchTerm] = React.useState('');
-  const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = React.useState(false);
-  const [newCatName, setNewCatName] = React.useState('');
-  const [renamingCat, setRenamingCat] = React.useState<SystemCategory | null>(null);
+  const [newFolderName, setNewFolderName] = React.useState('');
+  const [renamingCat, setRenamingCat] = React.useState<any | null>(null);
   const [renamedName, setRenamedName] = React.useState('');
+  const [deleteGate, setDeleteGate] = React.useState<{ isOpen: boolean; id: string; name: string } | null>(null);
 
-  // Admin Auth State
-  const [authModal, setAuthModal] = React.useState({
-    isOpen: false,
-    id: '',
-    name: ''
-  });
+  const [isProcessing, setIsProcessing] = React.useState(false);
 
-  const loadData = React.useCallback(async () => {
-    await dbApi.init();
-    const [cats, subs, recs] = await Promise.all([
-      dbApi.getCategories(),
-      dbApi.getSubSystems(),
-      dbApi.getTestRecords()
-    ]);
-    setCategories(cats);
-    setSubSystems(subs);
-    setRecords(recs);
-  }, []);
-
-  React.useEffect(() => {
-    loadData();
-    window.addEventListener('fy-change', loadData);
-    return () => window.removeEventListener('fy-change', loadData);
-  }, [loadData]);
-
-  const handleAddCategory = async () => {
-    if (!newCatName) return;
-    const newCat = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newCatName
-    };
-    await dbApi.saveCategory(newCat);
-    await loadData();
-    setNewCatName('');
-    setIsAddModalOpen(false);
+  const handleCreateFolder = async () => {
+    if (!newFolderName) return;
+    
+    setIsProcessing(true);
+    // Add to DB using new service
+    try {
+      await createDocument('EQUIPMENT_TYPES', {
+        name: newFolderName,
+      });
+      // Clear and Close
+      setNewFolderName('');
+      setIsModalOpen(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleRenameCategory = async () => {
     if (!renamedName || !renamingCat) return;
-    await dbApi.renameCategory(renamingCat.id, renamedName);
-    await loadData();
-    setIsRenameModalOpen(false);
-    setRenamingCat(null);
-    setRenamedName('');
+    setIsProcessing(true);
+    try {
+      await updateDocument('EQUIPMENT_TYPES', renamingCat.id, {
+        name: renamedName
+      });
+      setIsRenameModalOpen(false);
+      setRenamingCat(null);
+      setRenamedName('');
+    } catch(e) {
+      console.error(e);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handleDeleteCategory = async () => {
-    await dbApi.deleteCategory(authModal.id);
-    setAuthModal({ ...authModal, isOpen: false });
-    await loadData();
+  const handleDeleteCategory = async (categoryId: string) => {
+    setIsProcessing(true);
+    useGlobalStore.setState(state => ({
+      categories: state.categories.filter((c: any) => c.id !== categoryId),
+      subSystems: state.subSystems.filter((s: any) => s.categoryId !== categoryId),
+      records: state.records.filter((r: any) => r.categoryId !== categoryId)
+    }));
+    try {
+      await dbApi.deleteCategory(categoryId);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const exportCategoryPDF = async (category: SystemCategory) => {
-    const allRecords = await dbApi.getTestRecords();
-    const records = allRecords.filter(r => r.categoryId === category.id);
+  const exportCategoryPDF = async (category: any) => {
+    const categoryRecords = records.filter(r => r.equipmentTypeId === category.id || r.categoryId === category.id);
     const doc = new jsPDF();
     
     doc.setFontSize(18);
-    doc.text(`CATEGORY REPORT: ${category.name.toUpperCase()}`, 14, 22);
+    doc.text(`CATEGORY REPORT: ${(category.name || 'N/A').toUpperCase()}`, 14, 22);
     
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
-    doc.text(`Total Records: ${records.length}`, 14, 36);
+    doc.text(`Total Records: ${categoryRecords.length}`, 14, 36);
 
-    const tableData = records.map(r => [
-      r.plantName,
-      r.tagNumber,
-      r.subSystemName,
-      r.cycle,
-      r.status,
-      r.healthCondition,
+    const tableData = categoryRecords.map(r => [
+      r.plantName || 'N/A',
+      r.tagNumber || 'N/A',
+      r.subSystemName || 'N/A',
+      r.cycle || 'N/A',
+      r.status || 'N/A',
+      r.healthCondition || 'N/A',
       r.deficiency || 'N/A'
     ]);
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: 42,
       head: [['Plant', 'Tag No.', 'Sub-System', 'Cycle', 'Status', 'Health', 'Deficiency']],
       body: tableData,
@@ -108,25 +117,30 @@ export default function SystemCategories() {
     doc.save(`${category.name}_Full_Report.pdf`);
   };
 
-  const filteredCategories = categories.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredCategories = (equipmentTypes || []).filter(c => 
+    (c.name || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
+
+  const handleOpenInSchedule = (catId: string) => {
+    navigate('/', { state: { selectedCatId: catId } });
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="relative w-full sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
           <AppInput 
-            placeholder="Search categories..." 
-            className="pl-10" 
+            placeholder="Search folders..." 
+            className="pl-10 h-11 md:h-12" 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button onClick={() => setIsAddModalOpen(true)}>
+
+        <Button onClick={() => setIsModalOpen(true)} className="h-11 md:h-12 shadow-md">
           <Plus className="h-5 w-5 mr-2" />
-          Add Category Folder
+          Add Main Folder
         </Button>
       </div>
 
@@ -135,11 +149,11 @@ export default function SystemCategories() {
           <div className="h-20 w-20 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <Folder className="h-10 w-10" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">No category folders found</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">No folders found</h2>
           <p className="text-gray-500 max-w-sm mx-auto mb-6">
-            Get started by creating a new system category folder to organize your sub-systems and testing records.
+            Get started by creating a new system folder to organize your categories and testing records.
           </p>
-          <Button onClick={() => setIsAddModalOpen(true)} className="rounded-full px-8 shadow-md">
+          <Button onClick={() => setIsModalOpen(true)} className="rounded-full px-8 shadow-md">
             <Plus className="h-5 w-5 mr-2" />
             Create First Folder
           </Button>
@@ -148,50 +162,61 @@ export default function SystemCategories() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {filteredCategories.map((category) => {
             const catSubSystems = subSystems.filter(s => s.categoryId === category.id);
-            const catRecords = records.filter(r => r.categoryId === category.id);
 
             return (
               <Card 
                 key={category.id} 
-                className="group cursor-pointer hover:border-blue-300 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-0 overflow-hidden rounded-3xl border-gray-100 shadow-sm"
+                className={cn(
+                  "group cursor-pointer transition-all duration-300 p-0 overflow-hidden rounded-3xl shadow-sm",
+                  theme === 'modern' 
+                    ? "bg-slate-900/40 backdrop-blur-xl border border-slate-800/50 hover:border-[#D4AF37]/50 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] hover:-translate-y-1" 
+                    : "hover:border-blue-300 hover:shadow-xl hover:-translate-y-1 border-gray-100"
+                )}
               >
                 <div 
-                  className="bg-gradient-to-br from-gray-50 to-gray-100 p-10 flex items-center justify-center group-hover:from-blue-50 group-hover:to-blue-100 transition-colors relative"
+                  className={cn(
+                    "p-10 flex items-center justify-center transition-colors relative",
+                    theme === 'modern' 
+                      ? "bg-slate-900/60 group-hover:bg-slate-800/80" 
+                      : "bg-gradient-to-br from-gray-50 to-gray-100 group-hover:from-blue-50 group-hover:to-blue-100"
+                  )}
                   onClick={() => navigate(`/categories/${category.id}`)}
                 >
                   {/* Decorative background circle */}
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-white/40 rounded-full blur-2xl group-hover:bg-blue-200/40 transition-colors" />
+                  <div className={cn(
+                    "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full blur-2xl transition-colors",
+                    theme === 'modern' ? "bg-[#D4AF37]/5 group-hover:bg-[#D4AF37]/10" : "bg-white/40 group-hover:bg-blue-200/40"
+                  )} />
                   
-                  <div className="p-4 bg-white/90 backdrop-blur border border-white/50 rounded-2xl shadow-sm group-hover:scale-110 group-hover:shadow-md transition-all relative z-10">
-                    <Folder className="h-10 w-10 text-blue-600 drop-shadow-sm" />
+                  <div className={cn(
+                    "p-4 backdrop-blur rounded-2xl shadow-sm group-hover:scale-110 transition-all relative z-10",
+                    theme === 'modern' ? "bg-slate-800 border border-slate-700/50 group-hover:shadow-[0_0_15px_rgba(212,175,55,0.2)]" : "bg-white/90 border border-white/50 group-hover:shadow-md"
+                  )}>
+                    <Folder className={cn("h-10 w-10 drop-shadow-sm", theme === 'modern' ? "text-[#D4AF37]" : "text-blue-600")} />
                   </div>
                 </div>
-                <div className="p-6 bg-white">
-                  <div className="flex items-start justify-between mb-4">
-                    <h3 
-                      className="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors cursor-pointer line-clamp-1 flex-1 pr-2 leading-tight"
-                      onClick={() => navigate(`/categories/${category.id}`)}
-                      title={category.name}
-                    >
-                      {category.name}
-                    </h3>
-                    <div className="flex space-x-1 -mt-1 -mr-2 opacity-60 group-hover:opacity-100 transition-opacity">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 hover:bg-blue-50"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          exportCategoryPDF(category);
-                        }}
-                        title="Export PDF Report"
+                <div className={cn("p-6", theme === 'modern' ? "bg-slate-900/40" : "bg-white")}>
+                  <div className="flex flex-col mb-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <h3 
+                        className={cn(
+                          "text-lg font-bold transition-colors cursor-pointer line-clamp-1 flex-1 pr-2 leading-tight",
+                          theme === 'modern' ? "text-slate-100 group-hover:text-[#D4AF37]" : "text-gray-900 group-hover:text-blue-600"
+                        )}
+                        onClick={() => navigate(`/categories/${category.id}`)}
+                        title={category.name}
                       >
-                        <Download className="h-4 w-4 text-gray-500 group-hover:text-blue-600" />
-                      </Button>
-                      <Button 
+                        {category.name}
+                      </h3>
+                    </div>
+                    <div className="flex space-x-2">
+                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-8 w-8 hover:bg-blue-50"
+                        className={cn(
+                          "h-8 w-8 rounded-lg border",
+                          theme === 'modern' ? "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-[#D4AF37]" : "bg-gray-50 hover:bg-blue-50 text-blue-600 border-gray-100"
+                        )}
                         onClick={(e) => {
                           e.stopPropagation();
                           setRenamingCat(category);
@@ -200,48 +225,86 @@ export default function SystemCategories() {
                         }}
                         title="Rename Folder"
                       >
-                        <Edit className="h-4 w-4 text-gray-500 group-hover:text-blue-600" />
+                        <Edit className="h-3.5 w-3.5" />
                       </Button>
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-8 w-8 hover:bg-red-50"
+                        className={cn(
+                          "h-8 w-8 rounded-lg border",
+                          theme === 'modern' ? "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-[#D4AF37]" : "bg-gray-50 hover:bg-red-50 text-red-500 border-gray-100"
+                        )}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setAuthModal({
-                            isOpen: true,
-                            id: category.id,
-                            name: category.name
-                          });
+                          setDeleteGate({ isOpen: true, id: category.id, name: category.name });
                         }}
-                        title="Move to Bin"
+                        title="Delete Category"
                       >
-                        <Trash2 className="h-4 w-4 text-gray-500 group-hover:text-red-500" />
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className={cn(
+                          "h-8 w-8 rounded-lg border",
+                          theme === 'modern' ? "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-[#D4AF37]" : "bg-gray-50 hover:bg-blue-50 text-blue-600 border-gray-100"
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          exportCategoryPDF(category);
+                        }}
+                        title="Export PDF Report"
+                      >
+                        <Download className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
                   
                   {/* Embedded Stats Section */}
-                  <div className="flex items-center gap-4 bg-gray-50/80 border border-gray-100 rounded-xl p-3 mb-5">
+                  <div className={cn(
+                    "flex items-center gap-4 rounded-xl p-3 mb-5 border",
+                    theme === 'modern' ? "bg-slate-950/60 border-slate-800" : "bg-gray-50/80 border-gray-100"
+                  )}>
                     <div className="flex flex-col flex-1 pl-1">
-                      <span className="text-lg font-black text-gray-900 leading-none">{catSubSystems.length}</span>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Sub-folders</span>
+                      <span className={cn("text-lg font-black leading-none", theme === 'modern' ? "text-slate-100" : "text-gray-900")}>{catSubSystems.length}</span>
+                      <span className={cn("text-[10px] font-bold uppercase tracking-wider mt-1", theme === 'modern' ? "text-[#D4AF37]" : "text-gray-400")}>
+                        {catSubSystems.length === 1 ? 'Sub-folder' : 'Sub-folders'}
+                      </span>
                     </div>
-                    <div className="w-px h-8 bg-gray-200"></div>
+                    <div className={cn("w-px h-8", theme === 'modern' ? "bg-slate-800" : "bg-gray-200")}></div>
                     <div className="flex flex-col flex-1">
-                      <span className="text-lg font-black text-gray-900 leading-none">{catRecords.length}</span>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Total Records</span>
+                      <span className={cn("text-lg font-black leading-none", theme === 'modern' ? "text-slate-100" : "text-gray-900")}>{category.totalRecords || 0}</span>
+                      <span className={cn("text-[10px] font-bold uppercase tracking-wider mt-1", theme === 'modern' ? "text-[#D4AF37]" : "text-gray-400")}>
+                        {category.totalRecords === 1 ? 'Total Record' : 'Total Records'}
+                      </span>
                     </div>
                   </div>
 
                   <div 
-                    className="flex justify-between items-center text-blue-600 text-sm font-semibold group-hover:gap-2 transition-all cursor-pointer p-2 -mx-2 rounded-lg hover:bg-blue-50/50"
+                    className={cn(
+                      "flex justify-between items-center text-sm font-semibold group-hover:gap-2 transition-all cursor-pointer p-2 -mx-2 rounded-lg",
+                      theme === 'modern' ? "text-[#D4AF37] hover:bg-slate-800/80" : "text-blue-600 hover:bg-blue-50/50"
+                    )}
+                    onClick={() => handleOpenInSchedule(category.id)}
+                  >
+                    <span>View Scheduled Timeline</span>
+                    <div className={cn(
+                      "p-1.5 rounded-full transition-colors",
+                      theme === 'modern' ? "bg-slate-800 text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-slate-900" : "bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
+                    )}>
+                      <Calendar className="h-4 w-4" />
+                    </div>
+                  </div>
+
+                  <div 
+                    className={cn(
+                      "flex justify-between items-center text-xs font-medium group-hover:gap-2 transition-all cursor-pointer p-2 -mx-2 rounded-lg mt-1",
+                      theme === 'modern' ? "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200" : "text-gray-500 hover:bg-gray-100"
+                    )}
                     onClick={() => navigate(`/categories/${category.id}`)}
                   >
                     <span>Open Category Map</span>
-                    <div className="bg-blue-100 text-blue-600 p-1.5 rounded-full group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                      <ArrowRight className="h-4 w-4" />
-                    </div>
+                    <ArrowRight className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
@@ -250,28 +313,21 @@ export default function SystemCategories() {
         </div>
       )}
 
-      <AdminAuthModal 
-        isOpen={authModal.isOpen}
-        onClose={() => setAuthModal({ ...authModal, isOpen: false })}
-        onConfirm={handleDeleteCategory}
-        actionTitle={`Delete Category: ${authModal.name}`}
-      />
-
       <Dialog
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
         title="Create New Category Folder"
       >
         <div className="space-y-4">
           <AppInput 
             label="Category Name" 
             placeholder="e.g. Transformers, HVAC"
-            value={newCatName}
-            onChange={(e) => setNewCatName(e.target.value)}
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
           />
           <div className="flex justify-end space-x-3 pt-4">
-            <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddCategory}>Create Folder</Button>
+            <Button variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateFolder}>Create Folder</Button>
           </div>
         </div>
       </Dialog>
@@ -294,6 +350,16 @@ export default function SystemCategories() {
           </div>
         </div>
       </Dialog>
+
+      {deleteGate && (
+        <AdminDeleteGateModal
+          isOpen={deleteGate.isOpen}
+          onClose={() => setDeleteGate(null)}
+          onConfirm={() => handleDeleteCategory(deleteGate.id)}
+          targetName={deleteGate.name}
+          targetType="folder"
+        />
+      )}
     </div>
   );
 }

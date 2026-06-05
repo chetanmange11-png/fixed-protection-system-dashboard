@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { Button } from './Button';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { useGlobalStore } from '../../store/useGlobalStore';
 
 interface DialogProps {
   isOpen: boolean;
@@ -10,9 +11,12 @@ interface DialogProps {
   title: string;
   children: React.ReactNode;
   maxWidth?: string;
+  className?: string;
 }
 
-export function Dialog({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }: DialogProps) {
+export function Dialog({ isOpen, onClose, title, children, maxWidth = 'max-w-md', className }: DialogProps) {
+  const { theme } = useGlobalStore();
+  
   return (
     <AnimatePresence>
       {isOpen && (
@@ -29,17 +33,20 @@ export function Dialog({ isOpen, onClose, title, children, maxWidth = 'max-w-md'
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             className={cn(
-              "relative w-full bg-white rounded-2xl shadow-2xl overflow-hidden",
-              maxWidth
+              "relative w-full rounded-2xl shadow-2xl overflow-hidden",
+              maxWidth,
+              className || (theme === 'modern' ? "bg-slate-900/80 backdrop-blur-xl border border-slate-700/50" : "bg-white")
             )}
           >
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
-              <Button variant="ghost" size="icon" onClick={onClose}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <div className="p-6 overflow-y-auto max-h-[80vh]">
+            {title && (
+              <div className={cn("flex items-center justify-between p-6 border-b", theme === 'modern' ? "border-slate-800" : "border-gray-100")}>
+                <h3 className={cn("text-xl font-semibold", theme === 'modern' ? "text-slate-100" : "text-gray-900")}>{title}</h3>
+                <Button variant="ghost" size="icon" onClick={onClose} className={theme === 'modern' ? "text-slate-300 hover:bg-slate-800" : ""}>
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+            )}
+            <div className={cn("p-6 overflow-y-auto max-h-[80vh]", !title && "pt-6")}>
               {children}
             </div>
           </motion.div>

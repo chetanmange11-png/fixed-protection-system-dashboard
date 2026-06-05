@@ -7,6 +7,14 @@
   --radius-xl: 0.75rem;
   --radius-2xl: 1rem;
   --radius-3xl: 1.5rem;
+  --animate-shake: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+  40%, 60% { transform: translate3d(4px, 0, 0); }
 }
 
 @layer base {
@@ -23,4 +31,56 @@
 /* Highlighting transitions */
 .transition-all {
   transition-duration: 200ms;
+}
+
+@layer utilities {
+  .theme-modern .bg-white {
+    background-color: rgba(15, 23, 42, 0.4) !important;
+    backdrop-filter: blur(24px) !important;
+    border-color: rgba(30, 41, 59, 0.5) !important;
+  }
+
+  /* Global Text Overrides to prevent dark text on Obsidian Glass */
+  .theme-modern .text-gray-900,
+  .theme-modern .text-gray-800,
+  .theme-modern .text-slate-900 {
+    color: #f1f5f9 !important; /* text-slate-100 */
+  }
+  
+  .theme-modern .text-gray-700,
+  .theme-modern .text-gray-600 {
+    color: #cbd5e1 !important; /* text-slate-300 */
+  }
+
+  .theme-modern .text-gray-500 {
+    color: #94a3b8 !important; /* text-slate-400 */
+  }
+
+  /* Force background changes where bg-gray-50, etc exist */
+  .theme-modern .bg-gray-50,
+  .theme-modern .bg-gray-100 {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(51, 65, 85, 0.5) !important;
+  }
+
+  /* Global Table Header Override for Modern Theme */
+  .theme-modern thead,
+  .theme-modern th {
+    background-color: rgba(15, 23, 42, 0.8) !important;
+    color: #D4AF37 !important;
+    border-color: rgb(51, 65, 85) !important;
+  }
+
+  /* Global Dropdown/Select Override for Modern Theme */
+  .theme-modern select {
+    background-color: rgb(2, 6, 23) !important;
+    color: #e2e8f0 !important;
+    border-color: rgb(51, 65, 85) !important;
+  }
+  
+  .theme-modern select:focus {
+    border-color: #D4AF37 !important;
+    outline: none !important;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.3) !important;
+  }
 }
