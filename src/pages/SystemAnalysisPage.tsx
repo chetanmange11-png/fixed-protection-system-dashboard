@@ -38,9 +38,20 @@ export default function SystemAnalysisPage() {
   const [isolations, setIsolations] = React.useState<any[]>([]);
 
   // Sub-folder Multi-Select State
-  const [selectedFolders, setSelectedFolders] = React.useState<string[]>([]);
+  const [selectedFolders, setSelectedFolders] = React.useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('ril_hmd_analysis_folders');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    localStorage.setItem('ril_hmd_analysis_folders', JSON.stringify(selectedFolders));
+  }, [selectedFolders]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -92,12 +103,16 @@ export default function SystemAnalysisPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Set default Sub-folder based on available subsystems
+  // Set default Sub-folder based on available subsystems if not initialized
   React.useEffect(() => {
-    if (subSystems.length > 0 && selectedFolders.length === 0) {
-      setSelectedFolders([subSystems[0].id]);
+    if (subSystems.length > 0) {
+      const isInit = localStorage.getItem('ril_hmd_analysis_folders_init');
+      if (!isInit) {
+        setSelectedFolders([subSystems[0].id]);
+        localStorage.setItem('ril_hmd_analysis_folders_init', 'true');
+      }
     }
-  }, [subSystems, selectedFolders.length]);
+  }, [subSystems]);
 
   const toggleFolder = (folderId: string) => {
     setSelectedFolders(prev => 

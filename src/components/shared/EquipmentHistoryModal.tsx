@@ -282,7 +282,7 @@ const generatePDFReport = (record: TestRecord) => {
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0, 0, 0);
   const defLines = doc.splitTextToSize(
-    record.deficienciesText || "No deficiencies recorded.",
+    record.deficiency || record.deficienciesText || "No deficiencies recorded.",
     pageWidth - 32,
   );
   doc.text(defLines, 16, finalY + 10);
@@ -326,6 +326,7 @@ export function EquipmentHistoryModal({
 
   const [isTagLocked, setIsTagLocked] = React.useState(true);
   const [isLocationLocked, setIsLocationLocked] = React.useState(true);
+  const [isDeficienciesLocked, setIsDeficienciesLocked] = React.useState(true);
 
   // History Tab State
   const [historyRecords, setHistoryRecords] = React.useState<TestRecord[]>([]);
@@ -347,6 +348,7 @@ export function EquipmentHistoryModal({
     if (isOpen) {
       setIsTagLocked(true);
       setIsLocationLocked(true);
+      setIsDeficienciesLocked(true);
       const load = async () => {
         setIsLoadingHistory(true);
         await dbApi.init();
@@ -1103,16 +1105,27 @@ export function EquipmentHistoryModal({
 
             {/* Deficiencies Observations */}
             <div className="space-y-1.5">
-              <label className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'modern' ? "text-red-400" : "text-red-500")}>
-                OBSERVED DEFICIENCIES
-              </label>
+              <div className="flex items-center justify-between">
+                <label className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'modern' ? "text-red-400" : "text-red-500")}>
+                  OBSERVED DEFICIENCIES
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsDeficienciesLocked(false)}
+                  className={cn("text-[10px] font-black flex items-center gap-1 transition-colors", theme === 'modern' ? "text-[#D4AF37] hover:text-[#C09532]" : "text-blue-600 hover:text-blue-800")}
+                >
+                  <Edit3 className="h-2.5 w-2.5" />
+                  Edit
+                </button>
+              </div>
               <textarea
                 placeholder="Consolidated remarks on safety, defects, and corrective actions..."
-                className={cn("w-full min-h-[100px] rounded-xl border-2 px-4 py-3 text-sm font-medium outline-none resize-none transition-all", theme === 'modern' ? "bg-red-950/20 border-red-900/50 text-red-200 focus:border-red-500 placeholder:text-red-900/50" : "bg-red-50/10 border-red-100 text-gray-900 focus:border-red-400 placeholder:text-gray-400")}
-                value={formData.deficienciesText || ""}
+                className={cn("w-full min-h-[100px] rounded-xl border-2 px-4 py-3 text-sm font-medium outline-none resize-none transition-all disabled:opacity-50", theme === 'modern' ? "bg-red-950/20 border-red-900/50 text-red-200 focus:border-red-500 placeholder:text-red-900/50 disabled:bg-slate-900/50 disabled:text-slate-500" : "bg-red-50/10 border-red-100 text-gray-900 focus:border-red-400 placeholder:text-gray-400 disabled:bg-gray-50/50 disabled:text-gray-500")}
+                value={formData.deficiency || formData.deficienciesText || ""}
                 onChange={(e) =>
-                  setFormData({ ...formData, deficienciesText: e.target.value })
+                  setFormData({ ...formData, deficiency: e.target.value })
                 }
+                disabled={isDeficienciesLocked}
               />
             </div>
 
