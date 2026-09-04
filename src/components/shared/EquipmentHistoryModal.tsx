@@ -327,6 +327,9 @@ export function EquipmentHistoryModal({
   const [isTagLocked, setIsTagLocked] = React.useState(true);
   const [isLocationLocked, setIsLocationLocked] = React.useState(true);
   const [isDeficienciesLocked, setIsDeficienciesLocked] = React.useState(true);
+  const [isRemarksLocked, setIsRemarksLocked] = React.useState(true);
+  const [isPhotoLocked, setIsPhotoLocked] = React.useState(true);
+  const [isPersonnelLocked, setIsPersonnelLocked] = React.useState(true);
 
   // History Tab State
   const [historyRecords, setHistoryRecords] = React.useState<TestRecord[]>([]);
@@ -349,6 +352,9 @@ export function EquipmentHistoryModal({
       setIsTagLocked(true);
       setIsLocationLocked(true);
       setIsDeficienciesLocked(true);
+      setIsRemarksLocked(true);
+      setIsPhotoLocked(true);
+      setIsPersonnelLocked(true);
       const load = async () => {
         setIsLoadingHistory(true);
         await dbApi.init();
@@ -1032,30 +1038,51 @@ export function EquipmentHistoryModal({
                 </select>
               </div>
               <div className="space-y-1.5">
-                <label className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'modern' ? "text-slate-400" : "text-gray-400")}>
-                  PLANT PERSONNEL
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'modern' ? "text-slate-400" : "text-gray-400")}>
+                    PLANT PERSONNEL
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsPersonnelLocked(false)}
+                    className={cn("text-[10px] font-black flex items-center gap-1 transition-colors", theme === 'modern' ? "text-[#D4AF37] hover:text-[#C09532]" : "text-blue-600 hover:text-blue-800")}
+                  >
+                    <Edit3 className="h-2.5 w-2.5" />
+                    Edit
+                  </button>
+                </div>
                 <input
                   type="text"
                   placeholder="Name of plant personnel..."
-                  className={cn("w-full h-11 rounded-xl border-2 px-3 text-sm font-bold outline-none transition-all", theme === 'modern' ? "bg-slate-800/80 border-slate-700 text-slate-200 focus:border-[#D4AF37]" : "bg-white border-gray-100 text-gray-900 focus:border-blue-500")}
+                  className={cn("w-full h-11 rounded-xl border-2 px-3 text-sm font-bold outline-none transition-all disabled:opacity-50", theme === 'modern' ? "bg-slate-800/80 border-slate-700 text-slate-200 focus:border-[#D4AF37] disabled:bg-slate-900/50 disabled:text-slate-500" : "bg-white border-gray-100 text-gray-900 focus:border-blue-500 disabled:bg-gray-50/50 disabled:text-gray-500")}
                   value={formData.plantPersonnel || ""}
                   onChange={(e) =>
                     setFormData({ ...formData, plantPersonnel: e.target.value })
                   }
+                  disabled={isPersonnelLocked}
                 />
               </div>
             </div>
 
             {/* Photo Upload Section */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                <Camera className="h-3 w-3" />
-                Upload Defect Photo
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                  <Camera className="h-3 w-3" />
+                  Upload Defect Photo
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsPhotoLocked(false)}
+                  className={cn("text-[10px] font-black flex items-center gap-1 transition-colors", theme === 'modern' ? "text-[#D4AF37] hover:text-[#C09532]" : "text-blue-600 hover:text-blue-800")}
+                >
+                  <Edit3 className="h-2.5 w-2.5" />
+                  Edit
+                </button>
+              </div>
               <div className="flex items-start gap-4">
                 <div className="flex-1">
-                  <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-[#C09532]/50 hover:bg-[#C09532]/5 transition-all text-center">
+                  <label className={cn("flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-200 rounded-xl transition-all text-center", isPhotoLocked ? "opacity-50 cursor-not-allowed bg-gray-50/50" : "cursor-pointer hover:border-[#C09532]/50 hover:bg-[#C09532]/5")}>
                     <div className="flex flex-col items-center justify-center pt-2">
                       <Camera className="w-5 h-5 text-gray-400 mb-1" />
                       <p className="text-[9px] text-gray-500 font-bold">
@@ -1066,6 +1093,7 @@ export function EquipmentHistoryModal({
                       type="file"
                       className="hidden"
                       accept="image/*"
+                      disabled={isPhotoLocked}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
@@ -1131,16 +1159,27 @@ export function EquipmentHistoryModal({
 
             {/* Compliance Textarea */}
             <div className="space-y-1.5">
-              <label className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'modern' ? "text-slate-400" : "text-slate-500")}>
-                TECHNICAL REMARKS & RECOMMENDATIONS
-              </label>
+              <div className="flex items-center justify-between">
+                <label className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'modern' ? "text-slate-400" : "text-slate-500")}>
+                  TECHNICAL REMARKS & RECOMMENDATIONS
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsRemarksLocked(false)}
+                  className={cn("text-[10px] font-black flex items-center gap-1 transition-colors", theme === 'modern' ? "text-[#D4AF37] hover:text-[#C09532]" : "text-blue-600 hover:text-blue-800")}
+                >
+                  <Edit3 className="h-2.5 w-2.5" />
+                  Edit
+                </button>
+              </div>
               <textarea
                 placeholder="Details on compliance standards and certifications..."
-                className={cn("w-full min-h-[100px] rounded-xl border-2 px-4 py-3 text-sm font-medium outline-none resize-none transition-all", theme === 'modern' ? "bg-slate-900/50 border-slate-700/50 text-slate-200 focus:border-[#D4AF37] placeholder:text-slate-600" : "bg-slate-50/50 border-slate-100 text-gray-900 focus:border-slate-400 placeholder:text-gray-400")}
+                className={cn("w-full min-h-[100px] rounded-xl border-2 px-4 py-3 text-sm font-medium outline-none resize-none transition-all disabled:opacity-50", theme === 'modern' ? "bg-slate-900/50 border-slate-700/50 text-slate-200 focus:border-[#D4AF37] placeholder:text-slate-600 disabled:bg-slate-900/50 disabled:text-slate-500" : "bg-slate-50/50 border-slate-100 text-gray-900 focus:border-slate-400 placeholder:text-gray-400 disabled:bg-gray-50/50 disabled:text-gray-500")}
                 value={formData.complianceText || ""}
                 onChange={(e) =>
                   setFormData({ ...formData, complianceText: e.target.value })
                 }
+                disabled={isRemarksLocked}
               />
             </div>
 
